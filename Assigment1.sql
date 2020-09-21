@@ -21,10 +21,10 @@ CREATE TABLE Contact
 	ContactID				INT NOT NULL PRIMARY KEY IDENTITY,
 	ContactName				NVARCHAR(50) NOT NULL,
 	ContactPhone			NVARCHAR(24) NOT NULL,
-	ContactFax				NVARCHAR(24) DEFAULT(''),
-	ContactMobilePhone		NVARCHAR(24) DEFAULT(''),
-	ContactEmail			NVARCHAR(50) DEFAULT(''),
-	ContactWWW				NVARCHAR(50) DEFAULT(''),
+	ContactFax				NVARCHAR(24) DEFAULT(NULL),
+	ContactMobilePhone		NVARCHAR(24) DEFAULT(NULL),
+	ContactEmail			NVARCHAR(50) DEFAULT(NULL),
+	ContactWWW				NVARCHAR(50) DEFAULT(NULL),
 	ContactPostalAddress	NVARCHAR(60) NOT NULL
 )
 
@@ -102,7 +102,6 @@ CREATE TABLE AssemblySubcomponent
 	AssemblyID		INT NOT NULL IDENTITY,
 	SubcomponentID	INT NOT NULL,
 	Quantity		DECIMAL(14,4) NOT NULL,
-	CONSTRAINT PK_AssemblySubcomponent PRIMARY KEY (AssemblyID, SubcomponentID),
 	CONSTRAINT FK_Subcomponent_Component FOREIGN KEY(SubcomponentID)
 		REFERENCES Component(ComponentID)
 		ON UPDATE CASCADE
@@ -297,3 +296,139 @@ exec dbo.addSubComponent 'SquareStrap.1000.15', 'BMS10', 8
 exec dbo.createAssembly 'CornerBrace.15', '15mm corner brace'
 exec dbo.addSubComponent 'CornerBrace.15', 'BMS.5.15', 0.090
 exec dbo.addSubComponent 'CornerBrace.15', 'BMS10', 2
+
+-- Stored procedure createCustomer() returns 'ContactID' as 'CustomerID'
+GO
+CREATE OR ALTER PROCEDURE createCustomer(
+	@Name nvarchar(24), 
+	@Phone nvarchar(24),
+	@PostalAddress nvarchar(60), 
+	@Email nvarchar(50) = NULL, 
+	@WWW nvarchar(50) = NULL, 
+	@Fax nvarchar(24) = NULL,
+	@MobilePhone nvarchar(24) = NULL
+	)
+AS
+BEGIN
+	INSERT Contact (ContactName, ContactPhone, ContactPostalAddress, ContactEmail, ContactWWW, ContactFax, ContactMobilePhone)
+	VALUES (@Name, @Phone, @PostalAddress, @Email, @WWW, @Fax, @MobilePhone)
+
+	SET IDENTITY_INSERT Customer ON
+	INSERT Customer (CustomerID)
+	VALUES (@@IDENTITY)
+
+	SET IDENTITY_INSERT Customer OFF
+	RETURN @@IDENTITY
+END
+GO
+EXEC createCustomer 'Ruban', '212345', 'Dunedin', '021 789'
+
+GO
+--Stored procedure createQuote() returns 'QuoteID'
+CREATE OR ALTER PROCEDURE createQuote(
+	@QuoteDescription NVARCHAR(200),
+	@QuoteDate DATETIME = NULL,
+	@QuotePrice DECIMAL(14,4) = DEFAULT,
+	@QuoteCompiler NVARCHAR(200), 
+	@CustomerID INT
+	)
+AS
+BEGIN
+	IF @QuoteDate IS NULL set @QuoteDate = GETDATE() --catch the NULL parameter value and replace it
+	INSERT Quote (QuoteDescription, QuoteDate, QuotePrice, QuoteCompiler, CustomerID)
+	VALUES (@QuoteDescription, @QuoteDate, @QuotePrice, @QuoteCompiler, @CustomerID)
+
+	RETURN @@IDENTITY
+END
+GO
+
+EXEC createQuote 'QuoteDes', NULL, 2, 'compiler', @@IDENTITY
+GO
+/*
+DECLARE @value INT
+EXEC @value = createQuote 'QuoteDes', NULL, 2, 'compiler', @@IDENTITY
+print(@value)
+*/
+
+
+--Stored procedure addQuoteComponent insert quoteComponent.
+CREATE OR ALTER PROCEDURE addQuoteComponent(
+	@QuoteID INT,
+	@ComponentID INT,
+	@Quantity DECIMAL(14,4)
+	)
+AS
+BEGIN
+	DECLARE @TradePrice DECIMAL(14,4), @ListPrice DECIMAL(14,4), @TimeToFit DECIMAL(14,2)
+
+	SET @TradePrice = (SELECT TradePrice FROM Component
+	WHERE ComponentID = @ComponentID)
+
+	SET @ListPrice = (SELECT ListPrice FROM Component
+	WHERE ComponentID = @ComponentID)
+
+	SET @TimeToFit = (SELECT TimeToFit FROM Component
+	WHERE ComponentID = @ComponentID)
+
+	INSERT QuoteComponent (QuoteID, ComponentID, Quantity, TradePrice, ListPrice, TimeToFit)
+	VALUES (@QuoteID, @ComponentID, @Quantity, @TradePrice, @ListPrice, @TimeToFit)
+END
+GO
+EXEC addQuoteComponent 1, 30905, 2
+
+/*
+select * from QuoteComponent
+select * from Quote
+select * from Component
+select * from Contact
+select * from Supplier
+insert Supplier values(5,'SupplierRuban')
+*/
+/*
+ALTER TABLE AssemblySubcomponent 
+DROP 
+	CONSTRAINT FK_Subcomponent_Component, FK_Assembly_Component
+
+GO
+
+ALTER TABLE AssemblySubcomponent
+ADD 
+	CONSTRAINT FK_Subcomponent_Component FOREIGN KEY(SubcomponentID)
+	REFERENCES Component(ComponentID)
+	ON UPDATE CASCADE
+	ON DELETE NO ACTION,
+	CONSTRAINT FK_Assembly_Component FOREIGN KEY(AssemblyID)
+	REFERENCES Component(ComponentID)
+	ON UPDATE CASCADE
+	ON DELETE NO ACTION
+
+GO*/
+/*
+CREATE OR ALTER TRIGGER trigSupplierDelete ON Supplier
+INSTEAD OF DELETE
+AS
+BEGIN
+	DECLARE @Id INT
+	Select @Id = Supplier.SupplierID    
+	 from Supplier   
+	 join deleted    
+	 on deleted.SupplierID = Supplier.SupplierID
+	 if(@Id is NULL )    
+	  Begin    
+	   Raiserror('Cannot delete', 16, 1)    
+	   Return    
+	  End  
+	  else   
+	 --using Subquery  
+	 Delete from Supplier   
+	 where SupplierID in (Select SupplierID from deleted) 
+END
+
+delete Supplier where SupplierID = 4
+select COUNT(*) FROM Supplier s
+join Component c ON s.SupplierID = c.SupplierID where s.SupplierID = 5
+
+------------------
+update Supplier
+set SupplierID = 44 where SupplierID = 4
+*/
