@@ -33,7 +33,7 @@ CREATE TABLE Supplier
 (
 	SupplierID	INT NOT NULL PRIMARY KEY,
 	SupplierGST NVARCHAR(24) NOT NULL,
-	CONSTRAINT FK_Supplier_Contact FOREIGN KEY(SupplierID)
+	CONSTRAINT FK_Supplier_Contact FOREIGN KEY (SupplierID)
 		REFERENCES Contact(ContactID)
 		ON UPDATE CASCADE
 		ON DELETE CASCADE
@@ -41,7 +41,11 @@ CREATE TABLE Supplier
 
 CREATE TABLE Customer
 (
-	CustomerID	INT NOT NULL PRIMARY KEY IDENTITY
+	CustomerID	INT NOT NULL PRIMARY KEY,
+	CONSTRAINT FK_Customer_Contact FOREIGN KEY (CustomerID)
+		REFERENCES Contact(ContactID)
+		ON UPDATE CASCADE
+		ON DELETE CASCADE
 )
 
 CREATE TABLE Component
@@ -70,7 +74,7 @@ CREATE TABLE Quote
 	QuoteDescription		NVARCHAR(200) NOT NULL,
 	QuoteDate				DATETIME NOT NULL,
 	QuotePrice				DECIMAL(14,4) DEFAULT(0) CHECK(QuotePrice >= 0),
-	QuoteCompiler			NVARCHAR(200) NOT NULL,
+	QuoteCompiler			NVARCHAR(50) NOT NULL,
 	CustomerID				INT NOT NULL,
 	CONSTRAINT FK_Quote_Customer FOREIGN KEY(CustomerID)
 		REFERENCES Customer(CustomerID)
@@ -87,14 +91,14 @@ CREATE TABLE QuoteComponent
 	ListPrice		DECIMAL(14,4) CHECK(ListPrice >= 0) NOT NULL,
 	TimeToFit		DECIMAL(14,2) DEFAULT(0) CHECK(TimeToFit >= 0) NOT NULL,
 	CONSTRAINT PK_QuoteComponent PRIMARY KEY (ComponentID, QuoteID),
-	CONSTRAINT FK_QuoteComponent_Component FOREIGN KEY(ComponentID)
-		REFERENCES Component(ComponentID)
-		ON UPDATE CASCADE
-		ON DELETE NO ACTION,
-	CONSTRAINT FK_QuoteComponent_Quote FOREIGN KEY(QuoteID)
+	CONSTRAINT FK_QuoteComponent_Quote FOREIGN KEY (QuoteID)
 		REFERENCES Quote(QuoteID)
 		ON UPDATE CASCADE
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	CONSTRAINT FK_QuoteComponent_Component FOREIGN KEY(ComponentID)
+		REFERENCES Component(ComponentID)
+		ON UPDATE NO ACTION
+		ON DELETE NO ACTION
 )
 
 CREATE TABLE AssemblySubcomponent
@@ -313,11 +317,11 @@ BEGIN
 	INSERT Contact (ContactName, ContactPhone, ContactPostalAddress, ContactEmail, ContactWWW, ContactFax, ContactMobilePhone)
 	VALUES (@Name, @Phone, @PostalAddress, @Email, @WWW, @Fax, @MobilePhone)
 
-	SET IDENTITY_INSERT Customer ON
+
 	INSERT Customer (CustomerID)
 	VALUES (@@IDENTITY)
 
-	SET IDENTITY_INSERT Customer OFF
+
 	RETURN @@IDENTITY
 END
 GO
@@ -342,12 +346,12 @@ BEGIN
 END
 GO
 
-EXEC createQuote 'QuoteDes', NULL, 2, 'compiler', @@IDENTITY
+EXEC createQuote 'QuoteDes', NULL, 2, 'compiler', 5
 GO
 /*
 DECLARE @value INT
 EXEC @value = createQuote 'QuoteDes', NULL, 2, 'compiler', @@IDENTITY
-print(@value)
+print(@@IDENTITY)
 */
 
 
@@ -380,8 +384,10 @@ EXEC addQuoteComponent 1, 30905, 2
 select * from QuoteComponent
 select * from Quote
 select * from Component
+select * from AssemblySubcomponent
 select * from Contact
 select * from Supplier
+select * from Customer
 insert Supplier values(5,'SupplierRuban')
 */
 /*
