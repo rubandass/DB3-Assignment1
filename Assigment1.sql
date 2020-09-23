@@ -7,7 +7,7 @@ GO
 CREATE DATABASE jhonr1_IN705Assignment1
 GO
 
-USE jhonr1_IN705Assignment1;
+USE jhonr1_IN705Assignment1
 GO
 
 CREATE TABLE Category 
@@ -36,7 +36,7 @@ CREATE TABLE Supplier
 	CONSTRAINT FK_Supplier_Contact FOREIGN KEY (SupplierID)
 		REFERENCES Contact(ContactID)
 		ON UPDATE CASCADE
-		ON DELETE CASCADE
+		ON DELETE NO ACTION
 )
 
 CREATE TABLE Customer
@@ -86,7 +86,7 @@ CREATE TABLE QuoteComponent
 (
 	ComponentID		INT NOT NULL,
 	QuoteID			INT NOT NULL,
-	Quantity		INT NOT NULL,
+	Quantity		DECIMAL(14,4) NOT NULL,
 	TradePrice		DECIMAL(14,4) CHECK(TradePrice >= 0) NOT NULL,
 	ListPrice		DECIMAL(14,4) CHECK(ListPrice >= 0) NOT NULL,
 	TimeToFit		DECIMAL(14,2) DEFAULT(0) CHECK(TimeToFit >= 0) NOT NULL,
@@ -149,10 +149,8 @@ CREATE OR ALTER PROCEDURE createAssembly
 		)
 AS
 BEGIN
-	SET IDENTITY_INSERT Component ON
 	INSERT Component
 		(
-			ComponentID,
 			componentName,
 			componentDescription,
 			CategoryID,
@@ -160,13 +158,11 @@ BEGIN
 		)
 	VALUES
 		(
-			@@IDENTITY + 1,
 			@componentName,
 			@componentDescription,
 			dbo.getCategoryID('Assembly'),
 			dbo.getAssemblySupplierID()
 		)
-	SET IDENTITY_INSERT Component OFF
 END
 GO
 
@@ -314,20 +310,18 @@ CREATE OR ALTER PROCEDURE createCustomer(
 	)
 AS
 BEGIN
+	DECLARE @CustomerID INT
 	INSERT Contact (ContactName, ContactPhone, ContactPostalAddress, ContactEmail, ContactWWW, ContactFax, ContactMobilePhone)
 	VALUES (@Name, @Phone, @PostalAddress, @Email, @WWW, @Fax, @MobilePhone)
 
-
+	SET @CustomerID = @@IDENTITY
 	INSERT Customer (CustomerID)
-	VALUES (@@IDENTITY)
+	VALUES (@CustomerID)
+	RETURN @CustomerID
 
-
-	RETURN @@IDENTITY
 END
 GO
-EXEC createCustomer 'Ruban', '212345', 'Dunedin', '021 789'
 
-GO
 --Stored procedure createQuote() returns 'QuoteID'
 CREATE OR ALTER PROCEDURE createQuote(
 	@QuoteDescription NVARCHAR(200),
@@ -346,8 +340,6 @@ BEGIN
 END
 GO
 
-EXEC createQuote 'QuoteDes', NULL, 2, 'compiler', 5
-GO
 /*
 DECLARE @value INT
 EXEC @value = createQuote 'QuoteDes', NULL, 2, 'compiler', @@IDENTITY
@@ -378,15 +370,116 @@ BEGIN
 	VALUES (@QuoteID, @ComponentID, @Quantity, @TradePrice, @ListPrice, @TimeToFit)
 END
 GO
-EXEC addQuoteComponent 1, 30905, 2
+
+--Create 1st customer
+DECLARE @CustID INT
+EXEC @CustID = createCustomer 'Bimble & Hat', '444 5555', '123 Digit Street, Dunedin', 'guy.little@bh.biz.nz'
+
+--Create Quotes for the 1st customer
+EXEC createQuote 
+@QuoteDescription = 'Craypot frame', 
+@QuoteDate = DEFAULT, 
+@QuotePrice = 2.5, 
+@QuoteCompiler = 'Bimble & Hat', 
+@CustomerID = @CustID
+
+EXEC createQuote 
+@QuoteDescription = 'Craypot stand',
+@QuoteCompiler = 'Bimble & Hat', 
+@CustomerID = @CustID
+
+-- Insert datas to QuoteComponent table for 1st customer, 1st Quote
+EXEC addQuoteComponent 1, 30935, 3
+EXEC addQuoteComponent 1, 30912, 8
+EXEC addQuoteComponent 1, 30901, 24
+EXEC addQuoteComponent 1, 30904, 24
+EXEC addQuoteComponent 1, 30933, 0.2
+
+-- Insert datas to QuoteComponent table for 1st customer, 2nd Quote
+EXEC addQuoteComponent 2, 30914, 2
+EXEC addQuoteComponent 2, 30903, 4
+EXEC addQuoteComponent 2, 30906, 4
+EXEC addQuoteComponent 2, 30933, 0.1
+
+--Create 2nd customer
+DECLARE @CustID2 INT
+EXEC @CustID2 = createCustomer 'Hyperfont Modulator (International) Ltd.', '(4) 213 4359', '3 Lambton Quay, Wellington', 'sue@nz.hfm.com'
+
+--Create Quotes for the 2nd customer
+EXEC createQuote 
+@QuoteDescription = 'Phasing restitution fulcrum',
+@QuoteCompiler = 'Hyperfont Modulator (International) Ltd.', 
+@CustomerID = @CustID2
+
+-- Insert datas to QuoteComponent table for 1st customer, 1st Quote
+EXEC addQuoteComponent 3, 30936, 3
+EXEC addQuoteComponent 3, 30934, 1
+EXEC addQuoteComponent 3, 30932, 1
+
+-- Create procedure updateAssemblyPrices
+GO
+CREATE OR ALTER PROCEDURE updateAssemblyPrices
+AS
+BEGIN
+	UPDATE Component
+	SET 
+		TradePrice = ac.TradePrice,
+		ListPrice = ac.ListPrice
+	FROM 
+		(
+		SELECT a.AssemblyID, SUM(c.TradePrice) AS TradePrice, SUM(c.ListPrice) AS ListPrice FROM Component c 
+		JOIN AssemblySubcomponent a ON c.ComponentID = a.SubcomponentID
+		GROUP BY a.AssemblyID
+		) AS ac
+	WHERE ComponentID = ac.AssemblyID
+END
+
+-- Update Assembly component prices
+GO
+EXEC updateAssemblyPrices
+
+--Trigger on Supplier delete
+GO
+CREATE OR ALTER TRIGGER trigSupplierDelete ON Supplier
+INSTEAD OF DELETE
+AS
+BEGIN
+	SET NOCOUNT ON
+	DECLARE @SupplierID INT, @SupplierName NVARCHAR(50), @NumberOfComp INT
+	SELECT @SupplierID = deleted.SupplierID FROM deleted
+
+	SELECT @SupplierName = ct.ContactName,  @NumberOfComp = COUNT(*) FROM Component c
+	JOIN Supplier s ON c.SupplierID = s.SupplierID
+	JOIN Contact ct ON s.SupplierID = ct.ContactID
+	WHERE c.SupplierID = @SupplierID
+	GROUP BY c.SupplierID, ct.ContactName
+
+	IF (@NumberOfComp > 0)
+		PRINT('You cannot delete this supplier. ' + @SupplierName + ' has ' + CAST(@NumberOfComp AS NVARCHAR(5)) + ' related components.')
+	ELSE
+		DELETE Supplier WHERE SupplierID = @SupplierID
+END
+GO
+
+---------------------------
 
 /*
+select * from Category
 select * from QuoteComponent
 select * from Quote
 select * from Component
 select * from AssemblySubcomponent
 select * from Contact
 select * from Supplier
+select * from Customer
+delete Supplier where SupplierID = 3
+update Supplier set SupplierID = 444 where SupplierID = 4
+delete Component where ComponentID = 30901
+delete AssemblySubcomponent where AssemblyID = '30924'
+SET IDENTITY_INSERT Component ON
+update Component set ComponentID = 30912222 where ComponentID = 30912
+SET IDENTITY_INSERT Component ON
+update Category set CategoryID = 11 where CategoryID = 1
 select * from Customer
 insert Supplier values(5,'SupplierRuban')
 */
@@ -409,32 +502,4 @@ ADD
 	ON DELETE NO ACTION
 
 GO*/
-/*
-CREATE OR ALTER TRIGGER trigSupplierDelete ON Supplier
-INSTEAD OF DELETE
-AS
-BEGIN
-	DECLARE @Id INT
-	Select @Id = Supplier.SupplierID    
-	 from Supplier   
-	 join deleted    
-	 on deleted.SupplierID = Supplier.SupplierID
-	 if(@Id is NULL )    
-	  Begin    
-	   Raiserror('Cannot delete', 16, 1)    
-	   Return    
-	  End  
-	  else   
-	 --using Subquery  
-	 Delete from Supplier   
-	 where SupplierID in (Select SupplierID from deleted) 
-END
 
-delete Supplier where SupplierID = 4
-select COUNT(*) FROM Supplier s
-join Component c ON s.SupplierID = c.SupplierID where s.SupplierID = 5
-
-------------------
-update Supplier
-set SupplierID = 44 where SupplierID = 4
-*/
