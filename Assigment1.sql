@@ -103,7 +103,7 @@ CREATE TABLE QuoteComponent
 
 CREATE TABLE AssemblySubcomponent
 (
-	AssemblyID		INT NOT NULL IDENTITY,
+	AssemblyID		INT NOT NULL,
 	SubcomponentID	INT NOT NULL,
 	Quantity		DECIMAL(14,4) NOT NULL,
 	CONSTRAINT FK_Subcomponent_Component FOREIGN KEY(SubcomponentID)
@@ -174,7 +174,6 @@ CREATE OR ALTER PROCEDURE addSubComponent
 		)
 AS
 BEGIN
-	SET IDENTITY_INSERT AssemblySubcomponent ON
 
 	INSERT AssemblySubcomponent
 		(
@@ -190,7 +189,6 @@ BEGIN
 			WHERE ComponentName = @subComponentName),
 			@quantity
 		)
-	SET IDENTITY_INSERT AssemblySubcomponent OFF
 END
 GO
 
@@ -461,45 +459,34 @@ BEGIN
 END
 GO
 
----------------------------
-
-/*
-select * from Category
-select * from QuoteComponent
-select * from Quote
-select * from Component
-select * from AssemblySubcomponent
-select * from Contact
-select * from Supplier
-select * from Customer
-delete Supplier where SupplierID = 3
-update Supplier set SupplierID = 444 where SupplierID = 4
-delete Component where ComponentID = 30901
-delete AssemblySubcomponent where AssemblyID = '30924'
-SET IDENTITY_INSERT Component ON
-update Component set ComponentID = 30912222 where ComponentID = 30912
-SET IDENTITY_INSERT Component ON
-update Category set CategoryID = 11 where CategoryID = 1
-select * from Customer
-insert Supplier values(5,'SupplierRuban')
-*/
-/*
-ALTER TABLE AssemblySubcomponent 
-DROP 
-	CONSTRAINT FK_Subcomponent_Component, FK_Assembly_Component
-
+--Trigger on Component update
+CREATE OR ALTER TRIGGER trigComponentUpdate ON Component
+AFTER UPDATE
+AS
+BEGIN
+	EXEC updateAssemblyPrices 
+END   
 GO
 
-ALTER TABLE AssemblySubcomponent
-ADD 
-	CONSTRAINT FK_Subcomponent_Component FOREIGN KEY(SubcomponentID)
-	REFERENCES Component(ComponentID)
-	ON UPDATE CASCADE
-	ON DELETE NO ACTION,
-	CONSTRAINT FK_Assembly_Component FOREIGN KEY(AssemblyID)
-	REFERENCES Component(ComponentID)
-	ON UPDATE CASCADE
-	ON DELETE NO ACTION
-
-GO*/
-
+--test cyclic assembly
+CREATE OR ALTER PROCEDURE testCyclicAssembly(@assemblyID INT)
+AS
+BEGIN
+	IF (@assemblyID IN (SELECT AssemblyID FROM AssemblySubcomponent))
+	BEGIN
+		DECLARE @isCyclic BIT
+		DECLARE @CheckCyclic TABLE (aID INT, scID INT)
+			SET NOCOUNT ON
+			INSERT @CheckCyclic (aID, scID)
+			SELECT t1.AssemblyID, t1.SubcomponentID FROM AssemblySubcomponent t1
+			JOIN AssemblySubcomponent t2
+			ON t1.AssemblyID = t2.SubcomponentID
+			AND t1.SubcomponentID = t2.AssemblyID
+		SELECT @isCyclic = COUNT(DISTINCT aID) FROM @CheckCyclic
+		WHERE aID = @assemblyID
+		PRINT @isCyclic
+	END
+	ELSE
+		PRINT 'Not an assembly'
+END
+GO
